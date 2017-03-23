@@ -28,34 +28,38 @@ public class MailVerticle extends AbstractVerticle {
     }
 
     private void boot(Boolean b) {
-        Config.getInstance().getConfig("mail", config -> {
+        Config.getInstance().getConfig("mail", result -> {
+            if(result.failed()){
+                System.err.println("mail::" + result.cause());
+                System.exit(-1);
+            }
+
+
             MailConfig cfg = new MailConfig();
-            cfg.setHostname(config.getString("host"));
-            cfg.setPort(config.getInteger("port"));
-            cfg.setUsername(config.getString("username"));
-            cfg.setPassword(config.getString("password"));
+            cfg.setHostname(result.result().getJsonObject("result").getString("host"));
+            cfg.setPort(result.result().getJsonObject("result").getInteger("port"));
+            cfg.setUsername(result.result().getJsonObject("result").getString("username"));
+            cfg.setPassword(result.result().getJsonObject("result").getString("password"));
             this.mailClient = MailClient.createShared(vertx, cfg);
 
 
             eb.consumer("mail", this::sendMail);
-        }, event -> {
-            System.err.println("mail::" + event.getString("reason"));
-            System.exit(-1);
         });
     }
 
     private <T> void sendMail(Message<T> message) {
         JsonObject data = ((JsonObject) message.body());
         MailMessage mailMessage = new MailMessage();
-        mailMessage.setFrom("ender@webstaging.pt");
+        mailMessage.setFrom("sender@webstaging.pt");
         mailMessage.setTo(data.getString("to"));
         mailMessage.setText(data.getJsonObject("content").getString("plain"));
         mailMessage.setHtml(data.getJsonObject("content").getString("html"));
 
         mailClient.sendMail(mailMessage, result -> {
             if (result.succeeded()) {
-                System.out.println("sent");
+                message.reply(new JsonObject().put("success", true));
             } else {
+                message.reply(new JsonObject().put("fail", result.cause()));
                 result.cause().printStackTrace();
             }
         });
